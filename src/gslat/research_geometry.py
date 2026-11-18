@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any
 import numpy as np
 from scipy import ndimage
-from scipy.signal import find_peaks
-from scipy.stats import rankdata
 from skimage.feature import canny
 
 
@@ -384,53 +382,87 @@ def split_points(points,r,limit):
     return out
 
 
-def build(p,v,pr,a,q,erosion,dilation,split):
-    qs={f'q{k}':observed_quantile(p[v],k/100) for k in (20,30,40,60)}
-    seed=v&(p<=qs[f'q{q}']);core=seed.copy()
-    if dilation:core=ndimage.binary_dilation(core,structure=np.ones((dilation,dilation)))
-    if erosion:core=ndimage.binary_erosion(core,structure=np.ones((erosion,erosion)))
-    core&=v
-    edges,labs,sizes,objects=components(core,v,a)
-    sampling=adaptive_geometry(v,abs(pr['transform'].a),a)
-    allocation=adaptive_geometry(v,abs(pr['transform'].a),a,
-        scene_fraction_key='allocation_edge_buffer_scene_fraction',maximum_short_side_fraction_key='allocation_edge_buffer_maximum_short_side_fraction',transition_fraction_key='allocation_transition_buffer_fraction')
-    r=float(sampling['support_radius_pixels']);assert r==allocation['support_radius_pixels']
-    retained=np.zeros(v.shape,bool);sources=[];edge_rows=[]
-    limit=a['maximum_sampling_bbox_pixels'];floor=sampling['minimum_retained_edge_pixels']
-    for eid,sl in enumerate(objects,1):
-        if sl is None:continue
-        b=(sl[0].start,sl[0].stop,sl[1].start,sl[1].stop)
-        row=dict(edge_id=eid,edge_pixels=int(sizes[eid]),row0=b[0],row1=b[1],col0=b[2],col1=b[3],buffer_bbox_pixels=0,status='small_edge',segments=0)
-        if sizes[eid]<floor:edge_rows.append(row);continue
-        tile=labs[sl]==eid;rr,cc=np.where(tile);points=np.column_stack((rr+b[0],cc+b[2]))
-        full_bounds,dd=local_distance_crop(tile,(b[0],b[2]),r,v.shape)
-        ss=(dd<=r)&v[full_bounds[0]:full_bounds[1],full_bounds[2]:full_bounds[3]]
-        box=crop_bbox(ss,(full_bounds[0],full_bounds[2]));area=(box[1]-box[0])*(box[3]-box[2]);row['buffer_bbox_pixels']=area
-        retained[points[:,0],points[:,1]]=True
-        if area>limit and not split:row['status']='bbox_too_large';edge_rows.append(row);continue
-        segments=split_points(points,r,limit) if area>limit else [points]
-        row['status']='partitioned' if len(segments)>1 else 'candidate';row['segments']=len(segments)
-        for si,pts in enumerate(segments):
-            if len(pts)<a['minimum_edge_connected_floor_pixels']:continue
-            sr0,sc0=pts.min(axis=0);sr1,sc1=pts.max(axis=0)+1
-            t=np.zeros((sr1-sr0,sc1-sc0),bool);t[pts[:,0]-sr0,pts[:,1]-sc0]=True
-            bounds,dist=local_distance_crop(t,(sr0,sc0),r,v.shape)
-            win=(slice(bounds[0],bounds[1]),slice(bounds[2],bounds[3]));support=(dist<=r)&v[win]
-            box=crop_bbox(support,(bounds[0],bounds[2]));assert (box[1]-box[0])*(box[3]-box[2])<=limit
-            local=np.zeros(v.shape,bool);local[win]=core[win]&support
-            if not local.any():continue
-            primary=rectangle_profiles(p,v,local,box,a)
-            edge_mask=np.zeros(v.shape,bool);edge_mask[pts[:,0],pts[:,1]]=True
-            fallback=normal_profiles(p,v,core,edge_mask,a)
-            bw=(slice(box[0],box[1]),slice(box[2],box[3]))
-            weight=source_weight(window_from_crop(dist,bounds,box),allocation)*v[bw]
-            sources.append(dict(candidate_id=len(sources)+1,edge_id=eid,segment_index=si,anchor_label=eid,
-                anchored=False,anchor_pixels=0,box=box,support_box=box,weight=weight.astype(np.float32),
-                sampling_pixels=int(support.sum()),profiles=primary,fallback_profiles=fallback,
-                center_rc=pts.mean(axis=0).tolist(),edge_points=pts))
+def build(p, v, pr, a, seed_mask, erosion, dilation, split):
+    """Build edge sources and profile supports from the supplied seed mask."""
+    seed = np.asarray(seed_mask, dtype=bool)
+    if seed.shape != v.shape or np.any(seed & ~v):
+        raise ValueError("Injected seed must match and lie within the valid domain")
+    core = seed.copy()
+    if dilation:
+        core = ndimage.binary_dilation(core, structure=np.ones((dilation, dilation)))
+    if erosion:
+        core = ndimage.binary_erosion(core, structure=np.ones((erosion, erosion)))
+    core &= v
+    edges, labs, sizes, objects = components(core, v, a)
+    sampling = adaptive_geometry(v, abs(pr['transform'].a), a)
+    allocation = adaptive_geometry(v, abs(pr['transform'].a), a,
+        scene_fraction_key='allocation_edge_buffer_scene_fraction',
+        maximum_short_side_fraction_key='allocation_edge_buffer_maximum_short_side_fraction',
+        transition_fraction_key='allocation_transition_buffer_fraction')
+    r = float(sampling['support_radius_pixels'])
+    assert r == allocation['support_radius_pixels']
+    retained = np.zeros(v.shape, bool)
+    sources, edge_rows = [], []
+    limit = a['maximum_sampling_bbox_pixels']
+    floor = sampling['minimum_retained_edge_pixels']
+    for eid, sl in enumerate(objects, 1):
+        if sl is None:
+            continue
+        b = (sl[0].start, sl[0].stop, sl[1].start, sl[1].stop)
+        row = dict(edge_id=eid, edge_pixels=int(sizes[eid]), row0=b[0], row1=b[1],
+                   col0=b[2], col1=b[3], buffer_bbox_pixels=0, status='small_edge', segments=0)
+        if sizes[eid] < floor:
+            edge_rows.append(row)
+            continue
+        tile = labs[sl] == eid
+        rr, cc = np.where(tile)
+        points = np.column_stack((rr+b[0], cc+b[2]))
+        full_bounds, dd = local_distance_crop(tile, (b[0], b[2]), r, v.shape)
+        ss = (dd <= r) & v[full_bounds[0]:full_bounds[1], full_bounds[2]:full_bounds[3]]
+        box = crop_bbox(ss, (full_bounds[0], full_bounds[2]))
+        area = (box[1]-box[0])*(box[3]-box[2])
+        row['buffer_bbox_pixels'] = area
+        retained[points[:, 0], points[:, 1]] = True
+        if area > limit and not split:
+            row['status'] = 'bbox_too_large'
+            edge_rows.append(row)
+            continue
+        segments = split_points(points, r, limit) if area > limit else [points]
+        row['status'] = 'partitioned' if len(segments) > 1 else 'candidate'
+        row['segments'] = len(segments)
+        for si, pts in enumerate(segments):
+            if len(pts) < a['minimum_edge_connected_floor_pixels']:
+                continue
+            sr0, sc0 = pts.min(axis=0)
+            sr1, sc1 = pts.max(axis=0)+1
+            t = np.zeros((sr1-sr0, sc1-sc0), bool)
+            t[pts[:, 0]-sr0, pts[:, 1]-sc0] = True
+            bounds, dist = local_distance_crop(t, (sr0, sc0), r, v.shape)
+            win = (slice(bounds[0], bounds[1]), slice(bounds[2], bounds[3]))
+            support = (dist <= r) & v[win]
+            box = crop_bbox(support, (bounds[0], bounds[2]))
+            assert (box[1]-box[0])*(box[3]-box[2]) <= limit
+            local = np.zeros(v.shape, bool)
+            local[win] = core[win] & support
+            if not local.any():
+                continue
+            primary = rectangle_profiles(p, v, local, box, a)
+            edge_mask = np.zeros(v.shape, bool)
+            edge_mask[pts[:, 0], pts[:, 1]] = True
+            fallback = normal_profiles(p, v, core, edge_mask, a)
+            bw = (slice(box[0], box[1]), slice(box[2], box[3]))
+            weight = source_weight(window_from_crop(dist, bounds, box), allocation)*v[bw]
+            sources.append(dict(candidate_id=len(sources)+1, edge_id=eid, segment_index=si,
+                anchor_label=eid, anchored=False, anchor_pixels=0, box=box, support_box=box,
+                weight=weight.astype(np.float32), sampling_pixels=int(support.sum()),
+                profiles=primary, fallback_profiles=fallback,
+                center_rc=pts.mean(axis=0).tolist(), edge_points=pts))
         edge_rows.append(row)
-    return dict(seed=seed,core=core,edges=retained,quantiles=qs,sources=sources,sampling=sampling,allocation=allocation,
-                geometry_notes=dict(q=q,erosion=erosion,dilation=dilation,oversize_split=split,minimum_parent_edge_pixels=floor),edge_audit=edge_rows)
+    return dict(seed=seed, core=core, edges=retained, sources=sources, sampling=sampling,
+        allocation=allocation,
+        geometry_notes=dict(initialization='supplied_native_histogram_seed', erosion=erosion,
+            dilation=dilation, oversize_split=split,
+            minimum_parent_edge_pixels=floor), edge_audit=edge_rows)
 
 
 def strip_width(short_side, fraction=(1 / 16)):

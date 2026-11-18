@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bp-lat"
+name = "gs-lat"
 version = "0.1.0"
-description = "Readable Python reference implementation of the BP-LAT SAR thresholding workflow"
+description = "Hybrid Geometric-Statistical Local Adaptive Thresholding for SAR water segmentation"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
@@ -21,13 +21,13 @@ dependencies = [
 test = ["pytest>=7"]
 
 [project.scripts]
-bp-lat = "bplat.cli:main"
+gs-lat = "gslat.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-bplat = ["research_config.json"]
+gslat = ["research_config.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

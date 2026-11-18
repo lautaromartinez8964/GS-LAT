@@ -1,7 +1,4 @@
 {
-  "core_seed_percentile": 40.0,
-  "otsu_histogram_bins": 256,
-  "otsu_winsor_upper_percentile": 99.0,
   "erosion_kernel_size": 5,
   "canny_sigma": 1.0,
   "minimum_edge_connected_scene_fraction": 0.05,
@@ -51,7 +48,7 @@
   "backbone_use_edge_normal_fallback": false,
   "proximity_monotone_relaxation": true,
   "fallback_evidence_priority": false,
-  "global_backbone_aggregation": "support_area_weighted_median",
+  "global_backbone_aggregation": "source_median",
   "thin_min_pixels": 8,
   "thin_max_pixels": 5000,
   "thin_min_major_span_m": 40.0,
