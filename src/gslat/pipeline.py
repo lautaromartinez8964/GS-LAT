@@ -9,7 +9,7 @@ import numpy as np
 from . import research_geometry as geometry
 from .numerics import clean_mask
 from .seed import histogram_seed
-from .statistics import certainty, empirical_threshold
+from .statistics import empirical_threshold
 
 
 def _algorithm(pixel_size: float) -> dict:
@@ -129,8 +129,8 @@ def run(values: np.ndarray, valid: np.ndarray, profile: dict) -> tuple[dict, dic
     print(f"Estimating empirical classes ({len(pairs)} supported sources)...", flush=True)
     prior, statistical_threshold, stat_info = empirical_threshold(
         values, valid, pairs, radius, initial_prior)
-    # w_geom=q*(1-c), where c=1-H_2(pi)/log(2); q=0 gives T_stat.
-    geometry_weight = support*(1.0-certainty(prior))
+    # w_geom=q; q=0 gives T_stat. Statistical hesitation is not a fusion factor.
+    geometry_weight = support
     threshold = (1.0-geometry_weight)*statistical_threshold + geometry_weight*anchor
     mask = clean_mask(valid & (values <= threshold), valid, 5)
     arrays = {
@@ -147,7 +147,7 @@ def run(values: np.ndarray, valid: np.ndarray, profile: dict) -> tuple[dict, dic
         "prior": prior,
     }
     metadata = {
-        "method": "GS-LAT empirical two-class support-entropy fusion without threshold floor",
+        "method": "GS-LAT empirical two-class support fusion without threshold floor",
         "sar_log_conversion": False,
         "input_representation": "supplied native values",
         "seed_cut_native": seed_cut,
@@ -160,7 +160,7 @@ def run(values: np.ndarray, valid: np.ndarray, profile: dict) -> tuple[dict, dic
         "profile_radius_pixels": radius,
         "support_fraction": float(np.count_nonzero((support > 0) & valid)/valid.sum()),
         "empirical_classes": stat_info,
-        "fusion": "T=w_geom*M+(1-w_geom)*T_stat; w_geom=q*(1-c); c=1-H_2(pi)/log(2); no dark-mean floor",
+        "fusion": "T=q*M+(1-q)*T_stat; no entropy factor; no dark-mean floor",
         "cleanup": "8-connected k4, minimum foreground size 5",
         "water_pixels": int(mask.sum()),
     }

@@ -134,9 +134,3 @@ def empirical_threshold(values: np.ndarray, valid: np.ndarray, pairs: list,
                        class_balance="equal profile-normalized class histograms",
                        threshold_rule="minimum equal-cost Bayesian risk")
     return prior, threshold, diagnostics
-
-
-def certainty(prior: np.ndarray) -> np.ndarray:
-    p = np.clip(prior.astype(np.float64), np.finfo(float).eps, 1.0-np.finfo(float).eps)
-    # The logarithm is applied only to probabilities in binary entropy.
-    return 1.0 + (p*np.log(p)+(1.0-p)*np.log1p(-p))/np.log(2.0)

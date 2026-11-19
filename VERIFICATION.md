@@ -1,5 +1,7 @@
 # Implementation verification
 
-In the project environment, the standalone prediction code was replayed against the eight stored masks from the selected empirical two-class, support-entropy, unfloored arm. Valid domains, seed fractions, accepted source counts and final masks matched in Assam, Poyang Lake, Zhengzhou Southwest, Mozambique AOI02, Da Nang, the dense and sparse windows of S1S2 Scene 7, and the Scene 19 window. All eight masks had zero differing pixels. Predictions were compared with stored algorithm masks without opening reference labels or modifying archived products.
+# Implementation verification
 
-This is an implementation-equivalence check on development cases, not an independent accuracy evaluation. The checked dependency versions are in `requirements-verified.txt`. The scene data and comparison masks are not included.
+Version 0.1.0 replayed the empirical two-class, support-entropy, unfloored arm against eight stored development masks and matched all eight pixel for pixel. That check applied only to the entropy-weighted formula and is not a verification of the current package.
+
+Version 0.2.0 sets the fusion weight to the geometric support `q` and removes the entropy factor. It is therefore expected to differ from those stored masks. The retained automated check is the unit test for the empirical risk lookup and connected-component cleanup. This package has not been independently accuracy-validated. The checked dependency versions are in `requirements-verified.txt`. Scene data and comparison masks are not included.

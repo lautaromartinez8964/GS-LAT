@@ -2,9 +2,9 @@
 
 **Hybrid Geometric-Statistical Local Adaptive Thresholding for SAR Images: Water Segmentation as a Test Case**
 
-GS-LAT segments dark water candidates from a single-band SAR raster. Ordered boundary profiles provide both local geometric thresholds and two scene-wide empirical class histograms. A support-aware entropy weight combines the geometric threshold with a local statistical threshold. This package implements only the empirical two-class version without a dark-mean threshold floor.
+GS-LAT segments dark water candidates from a single-band SAR raster. Ordered boundary profiles provide both local geometric thresholds and two scene-wide empirical class histograms. The geometric support strength `q` combines the geometric threshold with a local statistical threshold. This package implements only the empirical two-class version without a dark-mean threshold floor or an entropy fusion factor.
 
-The same workflow processes supplied linear power, amplitude DN or dB values. It does not take logarithms of SAR pixel values. The entropy calculation uses logarithms of probabilities. Changing the radiometric representation can change the result. Prediction needs no reference labels and does not identify flood change between dates.
+The same workflow processes supplied linear power, amplitude DN or dB values. It does not take logarithms of SAR pixel values. Changing the radiometric representation can change the result. Prediction needs no reference labels and does not identify flood change between dates.
 
 ## Install and run
 
