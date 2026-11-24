@@ -4,9 +4,6 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d, uniform_filter
 from sklearn.isotonic import IsotonicRegression
 
-SHRINK = 0.5
-
-
 def _accepted_profile_rows(source: dict, record: dict) -> list[tuple[dict, dict]]:
     key = "profiles" if record["evidence"] == "double" else "fallback_profiles"
     raw_map = {(p["profile_index"], p["kind"]): p for p in source[key]}
@@ -94,9 +91,9 @@ def _threshold_lookup(edges: np.ndarray, water: np.ndarray,
     return priors, cuts
 
 
-def _update_prior(prior: np.ndarray, indices: np.ndarray, water: np.ndarray,
-                  land: np.ndarray, valid: np.ndarray, window: int,
-                  global_prior: float, denominator: np.ndarray) -> np.ndarray:
+def _neighborhood_posterior(prior: np.ndarray, indices: np.ndarray, water: np.ndarray,
+                            land: np.ndarray, valid: np.ndarray, window: int,
+                            denominator: np.ndarray) -> np.ndarray:
     water_likelihood = water[indices].astype(np.float32)
     land_likelihood = land[indices].astype(np.float32)
     a = np.asarray(prior, dtype=np.float32)*water_likelihood
@@ -105,9 +102,16 @@ def _update_prior(prior: np.ndarray, indices: np.ndarray, water: np.ndarray,
     posterior[~valid] = 0.0
     local = uniform_filter(posterior, size=window, mode="constant")
     np.divide(local, denominator, out=local, where=denominator > 0)
-    local = np.clip(SHRINK*local+(1.0-SHRINK)*global_prior, 0.01, 0.99)
-    local[~valid] = global_prior
-    return local.astype(np.float32)
+    return local
+
+
+def _update_prior(prior: np.ndarray, indices: np.ndarray, water: np.ndarray,
+                  land: np.ndarray, valid: np.ndarray, window: int,
+                  initial_prior: float, denominator: np.ndarray) -> np.ndarray:
+    local = _neighborhood_posterior(prior, indices, water, land, valid, window, denominator)
+    np.clip(local, 0.01, 0.99, out=local)
+    local[~valid] = initial_prior
+    return local
 
 
 def empirical_threshold(values: np.ndarray, valid: np.ndarray, pairs: list,
@@ -130,7 +134,7 @@ def empirical_threshold(values: np.ndarray, valid: np.ndarray, pairs: list,
     threshold = np.interp(prior, priors, lookup)
     diagnostics = dict(**sampling, **projection, bins=int(edges.size-1),
                        window=window, initial_prior=float(initial_prior),
-                       update_count=1, pseudocount_fraction=0.001,
+                       update_count=1, prior_shrinkage=False, pseudocount_fraction=0.001,
                        class_balance="equal profile-normalized class histograms",
                        threshold_rule="minimum equal-cost Bayesian risk")
     return prior, threshold, diagnostics
